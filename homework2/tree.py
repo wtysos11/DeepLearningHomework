@@ -23,10 +23,18 @@ class RandomForestRegressor:
         data和label均为pandas.DataFrame结构
         考虑到数据存放问题，在本函数内处理数据，并并行化地调用训练生成树
         '''
-        #随机产生数据集合
-        #调用
+        for i in range(self._n_estimators):
+            myTree = DecisionTreeRegressor(self._max_depth)
+            myTree.fit(data,label)
+            self._trees.append(myTree)
+            print(i)
+
 
     # 根据得到的生成树集合进行预测并返回结果
+    def predict(self,data):
+        ans = []
+        for tree in self._trees:
+            ans.append(tree.predict(data))
 
 #决策树节点
 
@@ -106,7 +114,7 @@ class DecisionTreeRegressor:
         产生一个特征的排列（肯定不会允许重复的吧）
         数量为log2N
         '''
-        return np.random.choice(int(math.log(len(feature))/lg2),len(feature),replace = False)
+        return np.random.choice(len(feature),int(math.log(len(feature))/lg2),replace = False)
 
     #接受数据，训练一棵树
     def fit(self,data,label):
@@ -117,7 +125,7 @@ class DecisionTreeRegressor:
         self.data = data
         self.label = label
         #建立树
-        self._min_leaf_sz = len(data)/200 #简单回归树，最多允许2层。因此需要树尽量的平衡，不要出现太小的数据集
+        self._min_leaf_sz = int(len(data)/200) #简单回归树，最多允许2层。因此需要树尽量的平衡，不要出现太小的数据集
         self.root = DecisionTreeRegressor.DecisionTreeNode(self._get_data(data),False,None,self._get_features(data.columns),0)
         self._build_tree(self.root)
 
@@ -132,8 +140,8 @@ class DecisionTreeRegressor:
         if (treeNode.depth + 1 < self._max_depth or self._max_depth == -1) and isSplit:
             #如果没有结束，则分成左右子树，并继续递归
             treeNode.isLeaf = False
-            lChildRow = [x for x in treeNode.dataRow if self.data[treeNode.featureCol].iloc[x] < treeNode.splitVal] #满足左子树要求的，行索引对应的数据全部小于切分值
-            rChildRow = [x for x in treeNode.dataRow if self.data[treeNode.featureCol].iloc[x] >= treeNode.splitVal] #满足右子树要求的，行索引对应的数据全部大于等于切分值
+            lChildRow = [x for x in treeNode.dataRow if self.data[treeNode.splitCol].iloc[x] < treeNode.splitVal] #满足左子树要求的，行索引对应的数据全部小于切分值
+            rChildRow = [x for x in treeNode.dataRow if self.data[treeNode.splitCol].iloc[x] >= treeNode.splitVal] #满足右子树要求的，行索引对应的数据全部大于等于切分值
             treeNode.lChild = DecisionTreeRegressor.DecisionTreeNode(lChildRow,False,treeNode,treeNode.featureCol,treeNode.depth+1)
             treeNode.rChild = DecisionTreeRegressor.DecisionTreeNode(rChildRow,False,treeNode,treeNode.featureCol,treeNode.depth+1)
             self._build_tree(treeNode.lChild)
@@ -143,7 +151,7 @@ class DecisionTreeRegressor:
             treeNode.isLeaf = True
             #计算平均值
             labelSum = self.label[0].iloc[treeNode.dataRow].sum()
-            num = len(treeNode.dataRow())
+            num = len(treeNode.dataRow)
             treeNode.ans = labelSum/num
 
         #如果结束了，就结束吧
@@ -167,11 +175,12 @@ class DecisionTreeRegressor:
             返回一个bool值，这个值判断切分前后MSE的变化决定是否进行切分。
                 如果MSE在最佳切分后反而变大了，那么就取消切分操作。
         '''
+        splitDiff = 0
         isSplit = True
         #遍历所有的特征
         for col in treeNode.featureCol:
             #拿到所有的行数据。对于DataFrame，使用DataFrame.values[feature][row]进行操作
-            aimData = self.data.values[:,col]
+            aimData = self.data.values[treeNode.dataRow,col]
             #进行排序和统计，取得遍历数据
             sorted_idx = np.argsort(aimData)
             sorted_data = aimData[sorted_idx]
@@ -229,6 +238,8 @@ class DecisionTreeRegressor:
             row = data.iloc[i]
             ans[i] = self._get_predict(row)
 
+        return ans
+
     #接受一个行的数据，在决策树上返回预测值
     def _get_predict(self,row):
         node = self.root
@@ -240,3 +251,31 @@ class DecisionTreeRegressor:
 
         return node.ans
 
+'''
+import pandas as pd                                                         
+import numpy as np
+#用于分析数据                 
+from sklearn.metrics import classification_report
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import StandardScaler
+
+dataSet = pd.read_csv('train1.csv',header=None)
+ansSet = pd.read_csv('label1.csv',header=None)
+
+X_train, X_test, y_train, y_test = train_test_split(dataSet, ansSet, test_size = 0.2, random_state = 0)
+
+myTree = DecisionTreeRegressor(2)
+data_num = 1000
+myTree.fit(X_train[:data_num],y_train[:data_num])
+y_ans = myTree.predict(X_train[data_num:2*data_num])
+y_correct = y_train[data_num:2*data_num].values[:,0]
+
+total = len(y_ans)
+correct = 0
+for i in range(len(y_ans)):
+    if y_ans[i] == y_correct[i]:
+        correct = correct+1
+
+print(correct/total)
+'''
