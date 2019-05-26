@@ -32,9 +32,12 @@ class RandomForestRegressor:
 
     # 根据得到的生成树集合进行预测并返回结果
     def predict(self,data):
-        ans = []
+        answer = np.zeros(len(data))
         for tree in self._trees:
-            ans.append(tree.predict(data))
+            answer += tree.predict(data)
+            
+        ans = answer/self._n_estimators
+        return ans
 
 #决策树节点
 
@@ -223,6 +226,7 @@ class DecisionTreeRegressor:
 
         if splitDiff < 0:
             isSplit = False
+
         return isSplit
         
 
@@ -265,7 +269,7 @@ ansSet = pd.read_csv('label1.csv',header=None)
 
 X_train, X_test, y_train, y_test = train_test_split(dataSet, ansSet, test_size = 0.2, random_state = 0)
 
-myTree = DecisionTreeRegressor(2)
+myTree = DecisionTreeRegressor(5)
 data_num = 1000
 myTree.fit(X_train[:data_num],y_train[:data_num])
 y_ans = myTree.predict(X_train[data_num:2*data_num])

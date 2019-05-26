@@ -24,26 +24,22 @@ dataSet = pd.concat(data)
 labelSet = pd.concat(label)
 
 '''
+#用来测试sklearn与自己的差别
+
 dataSet = pd.read_csv('train1.csv',header=None)
 labelSet = pd.read_csv('label1.csv',header=None)
+
 '''
 
-X_train = dataSet
-y_train = labelSet
-#X_train, X_test, y_train, y_test = train_test_split(dataSet, labelSet, test_size = 0.05, random_state = 0)
 
-ssX = StandardScaler()
-X_train = ssX.fit_transform(X_train)
 
-ssY = StandardScaler()
-y_train = ssX.fit_transform(y_train)
-
+X_train, X_test, y_train, y_test = train_test_split(dataSet, labelSet, test_size = 0.05, random_state = 0)
 
 import time
 
 begin = time.time()
-regressor = RandomForestRegressor(n_estimators = 200,max_features = 5,max_depth = 10,random_state = 0,n_jobs = 4,oob_score = True)
-regressor.fit(X_train, y_train.ravel())
+regressor = RandomForestRegressor(n_estimators = 100,max_features = 3,max_depth = 5,random_state = 0,n_jobs = -1,oob_score = True)
+regressor.fit(X_train, y_train)
 end = time.time()
 print(end-begin)
 
@@ -54,8 +50,6 @@ for i in range(1,7):
 
 testSet = pd.concat(test)
 
-X_test = ssX.transform(testSet)
-
 y_pred = regressor.predict(testSet)
 
 ans = pd.DataFrame(y_pred)
@@ -63,3 +57,4 @@ ans.columns = ['Predicted']
 ans.index = ans.index+1
 ans.index.name = 'id'
 ans.to_csv('ans.csv')
+
