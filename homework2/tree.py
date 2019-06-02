@@ -9,40 +9,52 @@ class RandomForestRegressor:
     Random Forest Regressor
     '''
 
-    def __init__(self,n_estimators = 100,max_depth = 2,n_jobs = -1):
+    def __init__(self,n_estimators = 100,max_depth = 5,n_jobs = -1):
         self._n_estimators = n_estimators
         self._n_jobs = n_jobs
         self._max_depth = max_depth
         self._trees = [] #生成树列表
 
-
+    def _single_tree_fit(self,tree):
+        return tree.fit(self.data,self.label)
 
     # 训练随机森林集合（并行化处理）
     def fit(self,data,label):
         '''
-        data和label均为pandas.DataFrame结构
+        data和label均为numpy.array结构
         考虑到数据存放问题，在本函数内处理数据，并并行化地调用训练生成树
         '''
+        self.data = data
+        self.label = label
         for i in range(self._n_estimators):
-            myTree = DecisionTreeRegressor(self._max_depth)
-            myTree.fit(data,label)
-            self._trees.append(myTree)
-            print(i)
+            self._trees.append(MyDecisionTreeRegressor(self._max_depth))
+
+        if self._n_jobs == 0:
+            for tree in self._trees:
+                self._single_tree_fit(tree)
+        else:
+            worker = self._n_jobs
+            if worker == -1:
+                worker = 8
+            pool = Pool(processes = worker)
+            self._trees = list(pool.map(self._single_tree_fit,self._trees))
 
 
     # 根据得到的生成树集合进行预测并返回结果
     def predict(self,data):
-        ans = []
+        answer = np.zeros(len(data))
         for tree in self._trees:
-            ans.append(tree.predict(data))
+            answer += tree.predict(data)
+            
+        ans = answer/self._n_estimators
+        return ans
 
-#决策树节点
 
 
 lg2 = math.log(2)
 
 #决策树回归器
-class DecisionTreeRegressor:
+class MyDecisionTreeRegressor:
     '''
         决策树训练过程：
             自助法随机产生一个数据集合，用来作为本决策树的数据
@@ -126,7 +138,7 @@ class DecisionTreeRegressor:
         self.label = label
         #建立树
         self._min_leaf_sz = int(len(data)/200) #简单回归树，最多允许2层。因此需要树尽量的平衡，不要出现太小的数据集
-        self.root = DecisionTreeRegressor.DecisionTreeNode(self._get_data(data),False,None,self._get_features(data.columns),0)
+        self.root = MyDecisionTreeRegressor.DecisionTreeNode(self._get_data(data),False,None,self._get_features(data.columns),0)
         self._build_tree(self.root)
 
     #根据一个节点建立一棵树
@@ -142,8 +154,8 @@ class DecisionTreeRegressor:
             treeNode.isLeaf = False
             lChildRow = [x for x in treeNode.dataRow if self.data[treeNode.splitCol].iloc[x] < treeNode.splitVal] #满足左子树要求的，行索引对应的数据全部小于切分值
             rChildRow = [x for x in treeNode.dataRow if self.data[treeNode.splitCol].iloc[x] >= treeNode.splitVal] #满足右子树要求的，行索引对应的数据全部大于等于切分值
-            treeNode.lChild = DecisionTreeRegressor.DecisionTreeNode(lChildRow,False,treeNode,treeNode.featureCol,treeNode.depth+1)
-            treeNode.rChild = DecisionTreeRegressor.DecisionTreeNode(rChildRow,False,treeNode,treeNode.featureCol,treeNode.depth+1)
+            treeNode.lChild = MyDecisionTreeRegressor.DecisionTreeNode(lChildRow,False,treeNode,treeNode.featureCol,treeNode.depth+1)
+            treeNode.rChild = MyDecisionTreeRegressor.DecisionTreeNode(rChildRow,False,treeNode,treeNode.featureCol,treeNode.depth+1)
             self._build_tree(treeNode.lChild)
             self._build_tree(treeNode.rChild)
         else:

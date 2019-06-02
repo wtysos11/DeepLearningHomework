@@ -35,18 +35,10 @@ dataSet = dataSet[:100000]
 labelSet = labelSet[:100000]
 '''
 X_train, X_test, y_train, y_test = train_test_split(dataSet, labelSet, test_size = 0.05, random_state = 0)
-ssX = StandardScaler()
-X_train = ssX.fit_transform(X_train)
-X_test = ssX.transform(X_test)
-
-ssY = StandardScaler()
-y_train = ssY.fit_transform(y_train)
-y_test = ssY.transform(y_test)
-
 
 begin = time.time()
-regressor = RandomForestRegressor(n_estimators=160,max_depth=9,max_features=5,min_samples_split = 100,min_samples_leaf = 30,random_state=10,n_jobs = 4)
-regressor.fit(X_train, y_train.ravel())
+regressor = RandomForestRegressor(n_estimators=200,max_depth=9,max_features=5,min_samples_split = 10000,min_samples_leaf = 3000,random_state=10,n_jobs = 4)
+regressor.fit(X_train, y_train)
 y_pred = regressor.predict(X_test)
 r2_score(y_pred,y_test)
 end=time.time()
@@ -75,9 +67,7 @@ for i in range(1,7):
 
 testSet = pd.concat(test)
 
-X_test = ssX.transform(testSet)
-
-y_pred = regressor.predict(X_test)
+y_pred = regressor.predict(testSet)
 
 ans = pd.DataFrame(y_pred)
 ans.columns = ['Predicted']
