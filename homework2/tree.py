@@ -21,11 +21,11 @@ class RandomForestRegressor:
     # 训练随机森林集合（并行化处理）
     def fit(self,data,label):
         '''
-        data和label均为numpy.array结构
+        得到的是pandas.DataFrame，保存的是numpy数组
         考虑到数据存放问题，在本函数内处理数据，并并行化地调用训练生成树
         '''
-        self.data = data
-        self.label = label
+        self.data = data.values
+        self.label = label.values[:,0]
         for i in range(self._n_estimators):
             self._trees.append(MyDecisionTreeRegressor(self._max_depth))
 
@@ -92,8 +92,9 @@ class MyDecisionTreeRegressor:
 
             如果没有特殊情况，切分时左子树永远小于右子树（所以等于在右边，如果有的话）
         '''
-        def __init__(self,dataRow,isLeaf,parent,featureCol,depth):
-            self.dataRow = dataRow #拿到的自助法抽到的行的索引
+        def __init__(self,data,label,dataRow,isLeaf,parent,featureCol,depth):
+            self.data = data[dataRow,:].copy() #拿到的自助法抽到的行的索引
+            self.label = label[dataRow].copy()
             self.featureCol = featureCol #拿到的基于随机森林思想的特征列的索引
             self.featureNum = len(featureCol)
 
@@ -118,27 +119,29 @@ class MyDecisionTreeRegressor:
         使用自助法抽取数据，产生可以含重复数据的列表
         接受一个pandas.DataFrame或者numpy形的数据，返回随机编号列表
         '''
-        return np.random.choice(len(data),len(data))
+        return np.random.choice(data.shape[0],data.shape[0])
 
-    def _get_features(self,feature):
+    def _get_features(self,featureNum):
         '''
         随机森林选取随机特征
         产生一个特征的排列（肯定不会允许重复的吧）
         数量为log2N
         '''
-        return np.random.choice(len(feature),int(math.log(len(feature))/lg2),replace = False)
+        return np.random.choice(featureNum,int(math.log(featureNum)/lg2),replace = False)
 
     #接受数据，训练一棵树
     def fit(self,data,label):
         '''
             提供数据和标签，进行训练
+            拿到的data和label均为numpy数组
         '''
         #存储数据和标签
         self.data = data
         self.label = label
         #建立树
-        self._min_leaf_sz = int(len(data)/200) #简单回归树，最多允许2层。因此需要树尽量的平衡，不要出现太小的数据集
-        self.root = MyDecisionTreeRegressor.DecisionTreeNode(self._get_data(data),False,None,self._get_features(data.columns),0)
+        self._min_leaf_sz = int(data.shape[0]/200) #简单回归树，最多允许2层。因此需要树尽量的平衡，不要出现太小的数据集
+        dataRow = self._get_data(data)
+        self.root = MyDecisionTreeRegressor.DecisionTreeNode(self.data,self.label,dataRow,False,None,self._get_features(data.shape[1]),0)
         self._build_tree(self.root)
 
     #根据一个节点建立一棵树
@@ -149,23 +152,27 @@ class MyDecisionTreeRegressor:
         #找到最佳的切分特征和最佳的切分点
         isSplit = self._find_bestSplit(treeNode)
         #判断是否结束建立树的过程（MSE差值、深度信息）
-        if (treeNode.depth + 1 < self._max_depth or self._max_depth == -1) and isSplit:
+        if (treeNode.depth + 1 < self._max_depth or self._max_depth == -1) and isSplit and treeNode.data.shape[0]>self._min_leaf_sz:
             #如果没有结束，则分成左右子树，并继续递归
             treeNode.isLeaf = False
-            lChildRow = [x for x in treeNode.dataRow if self.data[treeNode.splitCol].iloc[x] < treeNode.splitVal] #满足左子树要求的，行索引对应的数据全部小于切分值
-            rChildRow = [x for x in treeNode.dataRow if self.data[treeNode.splitCol].iloc[x] >= treeNode.splitVal] #满足右子树要求的，行索引对应的数据全部大于等于切分值
-            treeNode.lChild = MyDecisionTreeRegressor.DecisionTreeNode(lChildRow,False,treeNode,treeNode.featureCol,treeNode.depth+1)
-            treeNode.rChild = MyDecisionTreeRegressor.DecisionTreeNode(rChildRow,False,treeNode,treeNode.featureCol,treeNode.depth+1)
+            l = range(treeNode.data.shape[0])
+            lChildRow = [x for x in l if treeNode.data[x,treeNode.splitCol] < treeNode.splitVal] #满足左子树要求的，行索引对应的数据全部小于切分值
+            rChildRow = [x for x in l if treeNode.data[x,treeNode.splitCol] >= treeNode.splitVal] #满足右子树要求的，行索引对应的数据全部大于等于切分值
+            treeNode.lChild = MyDecisionTreeRegressor.DecisionTreeNode(treeNode.data,treeNode.label,lChildRow,False,treeNode,treeNode.featureCol,treeNode.depth+1)
+            treeNode.rChild = MyDecisionTreeRegressor.DecisionTreeNode(treeNode.data,treeNode.label,rChildRow,False,treeNode,treeNode.featureCol,treeNode.depth+1)
+            del(treeNode.data)
+            del(treeNode.label)
             self._build_tree(treeNode.lChild)
             self._build_tree(treeNode.rChild)
         else:
             #清洗切分痕迹，节点变为叶节点
             treeNode.isLeaf = True
             #计算平均值
-            labelSum = self.label[0].iloc[treeNode.dataRow].sum()
-            num = len(treeNode.dataRow)
+            labelSum = treeNode.label.sum()
+            num = treeNode.data.shape[0]
             treeNode.ans = labelSum/num
-
+            del(treeNode.data)
+            del(treeNode.label)
         #如果结束了，就结束吧
 
     def _compute_mse(self,square_sum,y_sum,number):
@@ -192,11 +199,11 @@ class MyDecisionTreeRegressor:
         #遍历所有的特征
         for col in treeNode.featureCol:
             #拿到所有的行数据。对于DataFrame，使用DataFrame.values[feature][row]进行操作
-            aimData = self.data.values[treeNode.dataRow,col]
+            aimData = treeNode.data
             #进行排序和统计，取得遍历数据
-            sorted_idx = np.argsort(aimData)
-            sorted_data = aimData[sorted_idx]
-            sorted_label = self.label.values[sorted_idx,0]
+            sorted_idx = np.argsort(aimData[:,col])
+            sorted_data = aimData[sorted_idx,col]
+            sorted_label = treeNode.label[sorted_idx]
             #准备遍历时需要计算MSE而维护的量
             lchild_number = 0
             lchild_sum = 0
