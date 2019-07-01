@@ -1,9 +1,7 @@
 import os
 os.chdir('E:\\code\\homework\\deepLearning\\homework3')
-
 import pandas as pd
 import numpy as np
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -18,8 +16,7 @@ from torchvision import transforms, datasets
 from torch.utils.data import DataLoader
 from torchstat import stat
 from torch.autograd import Variable
-
-epoch_times = 12
+epoch_times = 3
 batch_size = 4
 split_count = 15000
 
@@ -32,8 +29,7 @@ train_dir = 'Cloth image Dataset/image/train/'
 file = imgsNames
 file = [train_dir+i for i in file ]
 number = labelsNum
-
-file_train,file_test,number_train,number_test = train_test_split(file,number,test_size = 0.05,random_state=0)
+file_train,file_test,number_train,number_test = train_test_split(file,number,test_size = 0.05)
 
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms, utils
@@ -91,10 +87,46 @@ class testset(Dataset):
     def __len__(self):
         return len(self.images)
 
-
 import torch
 import torch.nn as nn
- 
+from torchvision.models import resnet152
+import math
+import torch.nn.functional as F
+from torch.autograd import Variable
+import numpy as np
+class LeNet(nn.Module):
+    def __init__(self):
+        super(LeNet,self).__init__()
+        self.model = resnet152(True)
+        self.fc = nn.Linear(1000,8)
+    
+    def l2_norm(self,input):
+        input_size = input.size()
+        buffer = torch.pow(input, 2)
+        normp = torch.sum(buffer, 1).add_(1e-10)
+        norm = torch.sqrt(normp)
+        _output = torch.div(input, norm.view(-1, 1).expand_as(input))
+        output = _output.view(input_size)
+
+        return output
+
+    def forward(self, x):
+        x = self.model(x)
+        x = self.fc(x)
+
+        #x = self.model.classifier(self.features)
+        return x
+
+    def forward_classifier(self, x):
+        features = self.forward(x)
+        res = self.model.classifier(features)
+        return res
+
+'''
+import torch
+import torch.nn as nn
+from torchvision.models import resnet18
+
 last_channel = 512
 class LeNet(nn.Module):
  
@@ -103,21 +135,6 @@ class LeNet(nn.Module):
         nn.Module.__init__(self) 
  
         #定义特征工程网络层，用于从输入数据中进行抽象提取特征
-        '''
-        self.feature_engineering = nn.Sequential(
-            nn.Conv2d(in_channels=3,
-                      out_channels=6,
-                      kernel_size=5),
-            #kernel_size=2, stride=2，正好可以将图片长宽尺寸缩小为原来的一半
-            nn.MaxPool2d(kernel_size=2,
-                         stride=2),
-            nn.Conv2d(in_channels=6,
-                      out_channels=16,
-                      kernel_size=5),
-            nn.MaxPool2d(kernel_size=2,
-                        stride=2)
-        )
-        '''
         self.feature_engineering = nn.Sequential(
             nn.Conv2d(in_channels=3,
                       out_channels=64,
@@ -167,6 +184,8 @@ class LeNet(nn.Module):
         x = x.view(-1, last_channel*36*36)
         x = self.classifier(x)
         return x
+'''
+print(1)
 
 train_data  = trainset()
 trainloader = DataLoader(train_data, batch_size=batch_size,shuffle=True)
@@ -192,16 +211,19 @@ class predictset(Dataset):
     def __init__(self, loader=default_loader):
         #定义好 image 的路径
         self.images = file_predict
+        self.names = test_imgs
         self.loader = loader
 
     def __getitem__(self, index):
         fn = self.images[index]
         img = self.loader(fn)
-        return img
+        name = self.names[index]
+        return (img,name)
 
     def __len__(self):
         return len(self.images)
-    
+
+
 def getValidate():
     test_data = testset()
     testloader = DataLoader(test_data, batch_size=batch_size,shuffle=True)
@@ -212,7 +234,8 @@ def getValidate():
         for data in testloader:
             images,labels = data
             images, labels = images.to(device), labels.to(device)
-            outputs = net(images)
+            #outputs = net(inputs)
+            outputs = net(images)#resnet
             loss = criterion(outputs,labels)
             average += loss
             ans = torch.max(outputs,dim=1).indices
@@ -222,7 +245,6 @@ def getValidate():
             del(labels)
     print('Accuracy of the network on the 10000 test images: %d %%' % (100 * correct / total))
     return loss/total
-
 import time
 s = time.time()
 record = []
@@ -233,7 +255,8 @@ for epoch in range(epoch_times):
         inputs,labels = data
         inputs, labels = inputs.to(device), labels.to(device)
         optimizer.zero_grad()
-        outputs = net(inputs)
+        #outputs = net(inputs)
+        outputs = net(inputs)#resnet
         loss = criterion(outputs,labels)
         loss.backward()
         optimizer.step()
@@ -258,16 +281,19 @@ torch.cuda.empty_cache()
 predict_data = predictset()
 predictloader = DataLoader(predict_data, batch_size=batch_size,shuffle=True)
 y_result = []
+names = []
 with torch.no_grad():
     for data in predictloader:
-        images = data
+        images,name = data
         images= images.to(device)
-        outputs = net(images)
+        #outputs = net(inputs)
+        outputs = net.forward_classifier(images)#resnet
         ans = torch.max(outputs,dim=1).indices
         y_result += ans.tolist()
+        names += list(name)
         del(images)
 
-y = pd.DataFrame(y_result,test_imgs)
+y = pd.DataFrame(y_result,names)
 y.columns = ['Cloth_label']
 y.index.name = 'Image'
 y.to_csv('ans.csv')
